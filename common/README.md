@@ -18,6 +18,19 @@ Broker URL and topic name are shared via a common `co.wethinkcode.trafficflow.mq
 tree — each service here is an independent Maven project with no shared parent pom,
 so the common package is duplicated rather than imported from one place.
 
+How it works:
+
+- On every change of level, congestion-service publishes a JSON text message,
+  `{"level": 4, "previousLevel": 6, "changedAt": "..."}`, marked with the property
+  `ActiveMQ.Retain` (`MqConfig.RETAIN_PROPERTY`). The broker keeps the latest retained message
+  as the topic's current value; congestion is one city-wide number, so that is the whole state.
+- routing-service subscribes to `congestion-topic?consumer.retroactive=true`
+  (`MqConfig.TOPIC + MqConfig.RETROACTIVE`), so the broker hands it that retained value as it
+  subscribes, then every change after. A routing-service that starts or restarts after a change
+  still knows the current level, without a durable subscription or a REST call.
+- The retained value lives in the broker's memory: restarting the broker forgets it until the
+  next change.
+
 ### Queue: `intersection-heartbeat-queue`
 
 Intersection Watchdog notices when Intersection Service goes down by watching for
@@ -66,14 +79,16 @@ from their own directories at the project root).
 docker compose ps          # confirm the broker container is healthy
 ```
 
-Once the TODOs below are implemented, verify end-to-end by publishing a message from
-`congestion-service` and confirming the consumer(s) receive it — e.g. via logs, or by
-watching the topic in the web console.
+`congestion-topic`, end to end, with congestion-service and routing-service running:
+
+```
+curl -X PUT localhost:7022/congestion -d '{"level": 4}'
+curl 'localhost:7023/travel-time?from=INT-1001&to=INT-1014'   # "congestionLevel": 4
+```
+
+The topic and its retained message are also visible in the web console under **Topics**.
 
 ## TODO
 
-- Add `activemq-client` publish logic to `congestion-service` on its stage/state-change endpoint.
-- Add `activemq-client` subscriber logic to consumer service(s) above, replacing any
-  direct synchronous calls to `congestion-service`.
 - Add `activemq-client` heartbeat-publish logic to `intersection-service`.
 - Add `activemq-client` subscriber/alerting logic to `intersection-watchdog`.

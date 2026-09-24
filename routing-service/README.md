@@ -22,7 +22,8 @@ routing-service/
     │   ├── IntersectionLookup.java     "is this a real intersection?"
     │   ├── IntersectionClient.java     ... asked of intersection-service
     │   ├── CongestionSource.java       "what is the congestion level?"
-    │   ├── RestCongestionSource.java   ... asked of congestion-service
+    │   ├── CongestionView.java         ... this service's own copy of it
+    │   ├── CongestionSubscriber.java   ... kept current by congestion-topic
     │   ├── Intersection.java           the fields of intersection-service's record it uses
     │   ├── UpstreamUnavailable.java    a dependency is down -> 503
     │   └── mq/
@@ -43,8 +44,16 @@ java -jar target/routing-service.jar
 ```
 
 Listens on port `7023`. Calls intersection-service (`INTERSECTION_SERVICE_URL`, default
-`http://localhost:7021`) and congestion-service (`CONGESTION_SERVICE_URL`, default
-`http://localhost:7022`) directly over HTTP.
+`http://localhost:7021`) directly over HTTP to validate each end of a trip. It never calls
+congestion-service: it keeps its own copy of the level, kept current by the ActiveMQ topic
+`congestion-topic` (see [`../common/`](../common)).
+
+The subscription is retroactive, so on subscribing it is handed the latest level straight
+away, even if the level was set before this service started. It connects in the background
+and reconnects on its own, so it answers requests while the broker is down, using the last
+level it heard. Before any level has arrived, an estimate reports `"congestionLevel": null`,
+assumes clear roads, and says so in `warnings`. A message it can't read (no level, a level
+outside 0 to 8, no time) is logged and ignored, never taken as clear roads.
 
 ```
 curl 'localhost:7023/travel-time?from=INT-1001&to=INT-1014'
@@ -64,7 +73,7 @@ Both ends are validated against intersection-service before anything is estimate
 | `200` | the estimate |
 | `400` | an end is missing, or both ends are the same intersection |
 | `404` | an end isn't a known intersection. The message says which end: `'INT-9999' (to) is not a known intersection` |
-| `503` | intersection-service is down, so routes can't be validated, or congestion-service is down |
+| `503` | intersection-service is down, so routes can't be validated |
 
 ### The estimate
 
@@ -90,6 +99,10 @@ mvn test
 ```
 
 - `DistrictMapTest`, `TravelTimeEstimatorTest`: the model, and every warning.
-- `IntersectionClientTest`, `RestCongestionSourceTest`: against stand-in services over real
-  HTTP, including every way each call can fail.
+- `IntersectionClientTest`: against a stand-in intersection-service over real HTTP, including
+  every way the call can fail.
+- `CongestionViewTest`: the latest change wins, and an older one arriving late is ignored.
+- `CongestionSubscriberTest`: against a real ActiveMQ broker run in-process (no Docker needed):
+  the retained level handed over on a late start, live changes, unreadable messages skipped,
+  and reconnecting after the broker restarts.
 - `RoutingServiceAppTest`: `/travel-time` with its 200, 400, 404 and 503 answers.

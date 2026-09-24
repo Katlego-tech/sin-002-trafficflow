@@ -5,10 +5,16 @@ package co.wethinkcode.trafficflow;
 interface CongestionSource {
 
     /**
-     * @param level 0 (clear) to 8 (gridlock)
-     * @param asOf  when the level was set, or null if it never has been
+     * @param level 0 (clear) to 8 (gridlock), or null if no level has been received yet
+     * @param asOf  when the level was set, or null if it is unknown
      */
-    record Reading(int level, String asOf) {
+    record Reading(Integer level, String asOf) {
+
+        static final Reading UNKNOWN = new Reading(null, null);
+
+        boolean known() {
+            return level != null;
+        }
     }
 
     Reading current();

@@ -12,12 +12,14 @@ import java.util.Optional;
  * <pre>
  *   (district crossing + signal delay at each end) x (1 + 0.25 x congestion level)
  * </pre>
- * so level 0 is free-flowing and level 8 triples the trip. Gaps in the source data still give an
- * estimate, but every assumption made to fill one is listed in the estimate's warnings.
+ * so level 0 is free-flowing and level 8 triples the trip. Gaps in the source data, or a level
+ * that hasn't arrived yet, still give an estimate, but every assumption made to fill one is listed
+ * in the estimate's warnings.
  */
 final class TravelTimeEstimator {
 
     /**
+     * @param congestionLevel      the level applied, or null if none has been received yet
      * @param baseMinutes          the trip on clear roads
      * @param congestionMultiplier what the congestion level multiplies it by
      * @param warnings             every assumption made because the source data has a gap
@@ -25,7 +27,7 @@ final class TravelTimeEstimator {
     record Estimate(
             Intersection from,
             Intersection to,
-            int congestionLevel,
+            Integer congestionLevel,
             String congestionAsOf,
             double baseMinutes,
             double congestionMultiplier,
@@ -47,6 +49,9 @@ final class TravelTimeEstimator {
 
     static Estimate estimate(Intersection from, Intersection to, Reading congestion) {
         List<String> warnings = new ArrayList<>();
+        if (!congestion.known()) {
+            warnings.add("no congestion level has been received yet, so clear roads (level 0) are assumed");
+        }
         Optional<String> fromDistrict = onMap(from, warnings);
         Optional<String> toDistrict = onMap(to, warnings);
         int crossing = fromDistrict.isPresent() && toDistrict.isPresent()
@@ -54,7 +59,7 @@ final class TravelTimeEstimator {
                 : DistrictMap.longestCrossing();
 
         double base = crossing + signalDelay(from, warnings) + signalDelay(to, warnings);
-        double multiplier = 1 + PER_CONGESTION_LEVEL * congestion.level();
+        double multiplier = 1 + PER_CONGESTION_LEVEL * (congestion.known() ? congestion.level() : 0);
         return new Estimate(from, to, congestion.level(), congestion.asOf(),
                 round(base), multiplier, round(base * multiplier), warnings);
     }

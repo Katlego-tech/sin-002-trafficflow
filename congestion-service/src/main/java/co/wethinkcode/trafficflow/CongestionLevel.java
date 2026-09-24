@@ -14,10 +14,12 @@ final class CongestionLevel {
     record Level(int level, String updatedAt) {
     }
 
+    private final CongestionPublisher publisher;
     private final InstantSource clock;
     private volatile Level current = new Level(MIN_LEVEL, null);
 
-    CongestionLevel(InstantSource clock) {
+    CongestionLevel(CongestionPublisher publisher, InstantSource clock) {
+        this.publisher = publisher;
         this.clock = clock;
     }
 
@@ -25,14 +27,23 @@ final class CongestionLevel {
         return current;
     }
 
-    /** Setting the level it already has changes nothing, not even {@code updatedAt}. */
+    /**
+     * Publishes the change first and records it second: if it can't be published, the level stays
+     * as it was, so this service never holds a level its subscribers weren't told about. Setting
+     * the level it already has changes and publishes nothing, not even {@code updatedAt}.
+     *
+     * @throws CongestionPublisher.PublishFailed if the change could not be published
+     */
     synchronized Level set(int level) {
         if (level < MIN_LEVEL || level > MAX_LEVEL) {
             throw new IllegalArgumentException("level must be from " + MIN_LEVEL + " to " + MAX_LEVEL + ", got " + level);
         }
-        if (level != current.level()) {
-            current = new Level(level, clock.instant().toString());
+        if (level == current.level()) {
+            return current;
         }
+        String now = clock.instant().toString();
+        publisher.publish(new CongestionChanged(level, current.level(), now));
+        current = new Level(level, now);
         return current;
     }
 }

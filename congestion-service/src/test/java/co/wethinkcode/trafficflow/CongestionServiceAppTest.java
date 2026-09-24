@@ -14,6 +14,8 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -24,11 +26,17 @@ class CongestionServiceAppTest {
     private static final HttpClient HTTP = HttpClient.newHttpClient();
     private static final ObjectMapper JSON = new ObjectMapper();
 
+    private final List<CongestionChanged> published = new ArrayList<>();
     private Javalin app;
 
     @BeforeEach
     void start() {
-        app = CongestionServiceApp.create(new CongestionLevel(() -> Instant.parse("2026-09-24T08:00:00Z"))).start(0);
+        start(published::add);
+    }
+
+    private void start(CongestionPublisher publisher) {
+        app = CongestionServiceApp.create(new CongestionLevel(publisher, () -> Instant.parse("2026-09-24T08:00:00Z")))
+                .start(0);
     }
 
     @AfterEach
@@ -69,10 +77,34 @@ class CongestionServiceAppTest {
     }
 
     @Test
+    void aNewLevelIsPublished() throws Exception {
+        put("{\"level\": 4}");
+
+        assertEquals(List.of(new CongestionChanged(4, 0, "2026-09-24T08:00:00Z")), published);
+    }
+
+    @Test
     void putIsIdempotent() throws Exception {
         String first = put("{\"level\": 5}").body();
 
         assertEquals(first, put("{\"level\": 5}").body());
+        assertEquals(1, published.size(), "the same level is not published twice");
+    }
+
+    @Test
+    void ifTheBrokerIsDownTheLevelIsNotChangedAndItSaysSo() throws Exception {
+        stop();
+        start(event -> {
+            throw new CongestionPublisher.PublishFailed("could not publish to congestion-topic: connection refused",
+                    null);
+        });
+
+        HttpResponse<String> response = put("{\"level\": 4}");
+
+        assertEquals(503, response.statusCode(), response.body());
+        assertEquals("level not changed: could not publish to congestion-topic: connection refused",
+                JSON.readTree(response.body()).get("error").asText());
+        assertEquals(0, get().get("level").asInt());
     }
 
     @Test
@@ -90,6 +122,7 @@ class CongestionServiceAppTest {
         assertTrue(JSON.readTree(response.body()).get("error").asText().startsWith("body must be JSON like"),
                 response.body());
         assertEquals(0, get().get("level").asInt());
+        assertEquals(List.of(), published);
     }
 
     @Test

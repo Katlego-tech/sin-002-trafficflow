@@ -106,6 +106,15 @@ class TravelTimeEstimatorTest {
     }
 
     @Test
+    void beforeAnyLevelHasArrivedTheLevelIsNullAndClearRoadsAreAssumedOutLoud() {
+        Estimate estimate = TravelTimeEstimator.estimate(DOWNTOWN_4WAY, UPTOWN_PEDESTRIAN, Reading.UNKNOWN);
+
+        assertEquals(new Estimate(DOWNTOWN_4WAY, UPTOWN_PEDESTRIAN, null, null, 14.0, 1.0, 14.0,
+                        List.of("no congestion level has been received yet, so clear roads (level 0) are assumed")),
+                estimate);
+    }
+
+    @Test
     void int1013HasEveryGapAtOnce() {
         Intersection int1013 = new Intersection("INT-1013", "Westside", null, null);
 

@@ -1,5 +1,7 @@
 package co.wethinkcode.trafficflow;
 
+import co.wethinkcode.trafficflow.CongestionPublisher.PublishFailed;
+import co.wethinkcode.trafficflow.mq.MqConfig;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -23,7 +25,9 @@ public class CongestionServiceApp {
     }
 
     public static void main(String[] args) {
-        create(new CongestionLevel(Clock.systemUTC())).start(PORT);
+        JmsCongestionPublisher publisher = new JmsCongestionPublisher(MqConfig.BROKER_URL);
+        Runtime.getRuntime().addShutdownHook(new Thread(publisher::close));
+        create(new CongestionLevel(publisher, Clock.systemUTC())).start(PORT);
     }
 
     static Javalin create(CongestionLevel congestion) {
@@ -34,9 +38,12 @@ public class CongestionServiceApp {
         app.get("/congestion", ctx -> ctx.json(congestion.current()));
 
         // PUT, not POST: it replaces the state of this one resource, and sending it twice is harmless.
+        // A change is published to congestion-topic before it is recorded.
         app.put("/congestion", ctx -> ctx.json(congestion.set(parseLevel(ctx.body()))));
 
         app.exception(InvalidRequest.class, (e, ctx) -> ctx.status(400).json(Map.of("error", e.getMessage())));
+        app.exception(PublishFailed.class,
+                (e, ctx) -> ctx.status(503).json(Map.of("error", "level not changed: " + e.getMessage())));
 
         return app;
     }
@@ -59,5 +66,3 @@ public class CongestionServiceApp {
         return value;
     }
 }
-
-// MQ TODO: publishes to ActiveMQ topic MqConfig.TOPIC at MqConfig.BROKER_URL (see co.wethinkcode.trafficflow.mq.MqConfig)

@@ -1,5 +1,6 @@
 package co.wethinkcode.trafficflow;
 
+import co.wethinkcode.trafficflow.mq.MqConfig;
 import io.javalin.Javalin;
 import io.javalin.http.Context;
 
@@ -12,8 +13,14 @@ public class RoutingServiceApp {
 
     public static void main(String[] args) {
         String intersectionUrl = System.getenv().getOrDefault("INTERSECTION_SERVICE_URL", "http://localhost:7021");
-        String congestionUrl = System.getenv().getOrDefault("CONGESTION_SERVICE_URL", "http://localhost:7022");
-        create(new IntersectionClient(intersectionUrl), new RestCongestionSource(congestionUrl)).start(PORT);
+        CongestionView congestion = new CongestionView();
+        // Bind the port before subscribing: if it is taken, startup fails here, before a subscriber
+        // thread exists to keep a half-started process alive.
+        create(new IntersectionClient(intersectionUrl), congestion).start(PORT);
+
+        CongestionSubscriber subscriber = new CongestionSubscriber(MqConfig.BROKER_URL, congestion::apply);
+        subscriber.start();
+        Runtime.getRuntime().addShutdownHook(new Thread(subscriber::close));
     }
 
     static Javalin create(IntersectionLookup intersections, CongestionSource congestion) {
@@ -60,5 +67,3 @@ public class RoutingServiceApp {
         ctx.status(404).json(Map.of("error", "'" + id + "' (" + end + ") is not a known intersection"));
     }
 }
-
-// MQ TODO: subscribes to ActiveMQ topic MqConfig.TOPIC at MqConfig.BROKER_URL (see co.wethinkcode.trafficflow.mq.MqConfig)

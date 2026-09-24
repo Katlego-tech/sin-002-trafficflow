@@ -21,7 +21,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-/** GET /travel-time over HTTP, with both upstream services replaced by lambdas. */
+/** GET /travel-time over HTTP, with intersection-service and the congestion level replaced by lambdas. */
 class RoutingServiceAppTest {
 
     private static final HttpClient HTTP = HttpClient.newHttpClient();
@@ -115,13 +115,13 @@ class RoutingServiceAppTest {
     }
 
     @Test
-    void congestionServiceDownIs503() throws Exception {
-        CongestionSource down = () -> {
-            throw new UpstreamUnavailable("congestion-service is unreachable at http://localhost:7022/congestion");
-        };
+    void beforeAnyLevelHasArrivedTheEstimateSaysSo() throws Exception {
+        JsonNode estimate = get(LOOKUP, () -> Reading.UNKNOWN, "?from=INT-1001&to=INT-1014", 200);
 
-        assertEquals("congestion-service is unreachable at http://localhost:7022/congestion",
-                error(get(LOOKUP, down, "?from=INT-1001&to=INT-1014", 503)));
+        assertEquals(true, estimate.get("congestionLevel").isNull());
+        assertEquals(14.0, estimate.get("estimatedMinutes").asDouble());
+        assertEquals("no congestion level has been received yet, so clear roads (level 0) are assumed",
+                estimate.get("warnings").get(0).asText());
     }
 
     @Test

@@ -28,8 +28,9 @@ cleanup through synchronous REST calls to asynchronous MQ decoupling and alertin
 Plus [`common/`](common) (no port) — the shared ActiveMQ broker and MQ config notes
 for `congestion-topic`: Routing Service becomes aware of congestion changes via an ActiveMQ Topic instead of querying Congestion Service directly.
 
-**Status:** scaffold only — build files, Javalin bootstrap, and TODOs are in place; no
-business logic has been implemented yet.
+**Status:** stages 1–3 are implemented and tested; stage 4 (IntersectionWatchdogApp) is not
+built yet. How each stage works, and how it was verified, is in
+[`IMPLEMENTATION.md`](IMPLEMENTATION.md).
 
 ## Your task
 
@@ -131,8 +132,18 @@ cd intersection-watchdog && mvn package && java -jar target/intersection-watchdo
 
 ## Test
 
-No automated tests exist yet (this is a scaffold). Each running service exposes
-`/health`, so sanity-check manually:
+Each module has its own JUnit tests, run from its folder:
+
+```
+cd routing-service
+mvn test
+```
+
+The tests that need a broker start a real ActiveMQ broker in-process, so no Docker is needed
+to run them. `intersection-watchdog` has no tests yet (stage 4). Each module's README lists
+what its tests cover.
+
+Each running service also exposes `/health`, so sanity-check manually:
 
 ```
 curl http://localhost:7020/health   # -> OK

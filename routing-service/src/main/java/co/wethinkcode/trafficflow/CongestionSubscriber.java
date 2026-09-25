@@ -34,11 +34,13 @@ final class CongestionSubscriber implements AutoCloseable {
 
     private static final Logger log = LoggerFactory.getLogger(CongestionSubscriber.class);
     // Tolerant of fields it doesn't use, but strict about the ones it does: a message without a
-    // level is unreadable, never silently level 0.
+    // level, or with a null one, is unreadable, never silently level 0. (A null int is 0 to
+    // Jackson unless told otherwise.)
     private static final ObjectMapper JSON = new ObjectMapper()
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
             .configure(DeserializationFeature.FAIL_ON_MISSING_CREATOR_PROPERTIES, true)
-            .configure(DeserializationFeature.FAIL_ON_NULL_CREATOR_PROPERTIES, true);
+            .configure(DeserializationFeature.FAIL_ON_NULL_CREATOR_PROPERTIES, true)
+            .configure(DeserializationFeature.FAIL_ON_NULL_FOR_PRIMITIVES, true);
 
     private final String brokerUrl;
     private final Consumer<CongestionChanged> onChange;

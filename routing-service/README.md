@@ -52,7 +52,7 @@ The subscription is retroactive, so on subscribing it is handed the latest level
 away, even if the level was set before this service started. It connects in the background
 and reconnects on its own, so it answers requests while the broker is down, using the last
 level it heard. Before any level has arrived, an estimate reports `"congestionLevel": null`,
-assumes clear roads, and says so in `warnings`. A message it can't read (no level, a level
+assumes clear roads, and says so in `warnings`. A message it can't read (no level, a null level, a level
 outside 0 to 8, no time) is logged and ignored, never taken as clear roads.
 
 ```

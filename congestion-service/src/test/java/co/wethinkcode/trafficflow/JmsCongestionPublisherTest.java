@@ -48,7 +48,8 @@ class JmsCongestionPublisherTest {
         broker.waitUntilStopped();
     }
 
-    private static BrokerService startBroker(String connector) throws Exception {
+    /** A non-persistent broker, no JMX: shared with {@link RetainedLevelReaderTest}. */
+    static BrokerService startBroker(String connector) throws Exception {
         BrokerService broker = new BrokerService();
         broker.setPersistent(false);
         broker.setUseJmx(false);

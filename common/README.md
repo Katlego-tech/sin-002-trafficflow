@@ -28,6 +28,8 @@ How it works:
   (`MqConfig.TOPIC + MqConfig.RETROACTIVE`), so the broker hands it that retained value as it
   subscribes, then every change after. A routing-service that starts or restarts after a change
   still knows the current level, without a durable subscription or a REST call.
+- congestion-service reads the same retained value back the same way, so a restarted
+  congestion-service carries on from the level it last published instead of starting at 0.
 - The retained value lives in the broker's memory: restarting the broker forgets it until the
   next change.
 

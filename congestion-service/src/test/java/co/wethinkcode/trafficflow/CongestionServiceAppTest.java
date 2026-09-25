@@ -16,6 +16,7 @@ import java.net.http.HttpResponse;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -35,8 +36,18 @@ class CongestionServiceAppTest {
     }
 
     private void start(CongestionPublisher publisher) {
-        app = CongestionServiceApp.create(new CongestionLevel(publisher, () -> Instant.parse("2026-09-24T08:00:00Z")))
+        start(publisher, Optional::empty);
+    }
+
+    private void start(CongestionPublisher publisher, LastPublished lastPublished) {
+        app = CongestionServiceApp.create(
+                        new CongestionLevel(publisher, lastPublished, () -> Instant.parse("2026-09-24T08:00:00Z")))
                 .start(0);
+    }
+
+    private void restartWith(LastPublished lastPublished) {
+        stop();
+        start(published::add, lastPublished);
     }
 
     @AfterEach
@@ -129,5 +140,39 @@ class CongestionServiceAppTest {
     void anOutOfRangeLevelSaysWhatItGot() throws Exception {
         assertEquals("body must be JSON like {\"level\": 3}, with a whole number from 0 to 8; got 9",
                 JSON.readTree(put("{\"level\": 9}").body()).get("error").asText());
+    }
+
+    @Test
+    void afterARestartGetAnswersWithTheLevelLastPublished() throws Exception {
+        restartWith(() -> Optional.of(new CongestionChanged(5, 2, "2026-09-24T07:30:00Z")));
+
+        assertEquals("{\"level\":5,\"updatedAt\":\"2026-09-24T07:30:00Z\"}", get().toString());
+    }
+
+    @Test
+    void ifTheLevelCannotBeReadBackGetIs503NeverZero() throws Exception {
+        restartWith(() -> {
+            throw new LastPublished.ReadFailed("could not read congestion-topic: connection refused", null);
+        });
+
+        HttpResponse<String> response = send(HttpRequest.newBuilder().GET());
+
+        assertEquals(503, response.statusCode(), response.body());
+        assertEquals("{\"error\":\"level unknown: could not read congestion-topic: connection refused\"}",
+                JSON.readTree(response.body()).toString());
+    }
+
+    @Test
+    void ifTheLevelCannotBeReadBackPutIs503AndPublishesNothing() throws Exception {
+        restartWith(() -> {
+            throw new LastPublished.ReadFailed("could not read congestion-topic: connection refused", null);
+        });
+
+        HttpResponse<String> response = put("{\"level\": 4}");
+
+        assertEquals(503, response.statusCode(), response.body());
+        assertEquals("level not changed: level unknown: could not read congestion-topic: connection refused",
+                JSON.readTree(response.body()).get("error").asText());
+        assertEquals(List.of(), published);
     }
 }

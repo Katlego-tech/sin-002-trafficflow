@@ -1,13 +1,16 @@
 package co.wethinkcode.trafficflow;
 
+import co.wethinkcode.trafficflow.CongestionLevel.LevelUnknown;
 import co.wethinkcode.trafficflow.CongestionPublisher.PublishFailed;
 import co.wethinkcode.trafficflow.mq.MqConfig;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.javalin.Javalin;
+import io.javalin.http.HandlerType;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.util.Map;
 
 public class CongestionServiceApp {
@@ -27,7 +30,14 @@ public class CongestionServiceApp {
     public static void main(String[] args) {
         JmsCongestionPublisher publisher = new JmsCongestionPublisher(MqConfig.BROKER_URL);
         Runtime.getRuntime().addShutdownHook(new Thread(publisher::close));
-        create(new CongestionLevel(publisher, Clock.systemUTC())).start(PORT);
+        CongestionLevel congestion = new CongestionLevel(publisher,
+                new RetainedLevelReader(MqConfig.BROKER_URL, Duration.ofSeconds(2)), Clock.systemUTC());
+        try {
+            congestion.current(); // read the level back now, so the log says where it came from
+        } catch (LevelUnknown e) {
+            // Logged already; the next request tries again, so the start order doesn't matter.
+        }
+        create(congestion).start(PORT);
     }
 
     static Javalin create(CongestionLevel congestion) {
@@ -44,6 +54,8 @@ public class CongestionServiceApp {
         app.exception(InvalidRequest.class, (e, ctx) -> ctx.status(400).json(Map.of("error", e.getMessage())));
         app.exception(PublishFailed.class,
                 (e, ctx) -> ctx.status(503).json(Map.of("error", "level not changed: " + e.getMessage())));
+        app.exception(LevelUnknown.class, (e, ctx) -> ctx.status(503).json(Map.of("error",
+                (ctx.method() == HandlerType.PUT ? "level not changed: " : "") + e.getMessage())));
 
         return app;
     }

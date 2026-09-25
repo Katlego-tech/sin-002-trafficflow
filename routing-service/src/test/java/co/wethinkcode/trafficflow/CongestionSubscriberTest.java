@@ -125,6 +125,19 @@ class CongestionSubscriberTest {
     }
 
     @Test
+    void aNullLevelIsSkippedNeverTakenAsClearRoads() throws Exception {
+        subscribe();
+        publish(change(5, 0, "2026-09-24T08:00:00Z"));
+        eventually(() -> view.current().known(), "level 5");
+
+        publish("{\"level\":null,\"changedAt\":\"2026-09-24T08:20:00Z\"}");
+        // Older than the null one, so it applies only if the null one was skipped.
+        publish(change(6, 5, "2026-09-24T08:10:00Z"));
+
+        eventually(() -> Integer.valueOf(6).equals(view.current().level()), "level 6, the null level skipped");
+    }
+
+    @Test
     void itReconnectsOnItsOwnAfterTheBrokerComesBack() throws Exception {
         subscribe();
         broker.stop();
